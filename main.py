@@ -135,7 +135,7 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text += '(Введите номер игры или выберете номер на клавиатуре бота)'
         markup = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True)
 
-        context.user_data['games_to_choose'] = games
+        context.user_data['games_to_choose_ids'] = [g.id for g in games]
 
         await update.message.reply_text(text, reply_markup=markup)
         return CHOOSE_GAME
@@ -160,7 +160,7 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 Кол-во уникальных игр: {len(player.unique_games.split(',')) - 1}
 Кол-во сыгранных игр всего: {player.total_games}
 Получено различных результатов: {len(player.unique_results.split(',')) - 1}
-Отверчено на вопросы: {answered_questions}'''
+Отвечено на вопросы: {answered_questions}'''
 
         await update.message.reply_text(text)
         return MAIN_MENU
@@ -177,15 +177,18 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def choose_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     game = update.message.text
-    games_to_choose = context.user_data['games_to_choose']
-    if not game.isdigit() or int(game) - 1 < 0 or int(game) - 1 >= len(games_to_choose):
+    games_to_choose_ids = context.user_data['games_to_choose_ids']
+
+    if not game.isdigit() or int(game) - 1 < 0 or int(game) - 1 >= len(games_to_choose_ids):
         await update.message.reply_text('Воспользуйтесь клавиатурой бота для выбора игры.')
     else:
-        game = context.user_data['games_to_choose'][int(game) - 1]
+        db_sess = db_session.create_session()
+        game_id = context.user_data['games_to_choose_ids'][int(game) - 1]
+        game = db_sess.query(Game).get(game_id)
         logging.info(f'Chosen game: {game.id} {game.name}')
         logging.info(f'Questions amount: {len(game.questions)}')
 
-        context.user_data['curr_game'] = game
+        context.user_data['curr_game_id'] = game.id
         context.user_data['curr_question'] = 0
         context.user_data['results_count'] = {}
 
@@ -205,7 +208,7 @@ async def choose_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         context.user_data['last_update'] = update
 
-        text, reply_markup = ask_question(game.questions[0])
+        text, reply_markup = ask_question(game.questions[0].answers, game.questions[0].text)
         await update.message.reply_text(
             text,
             reply_markup=reply_markup,
@@ -214,26 +217,31 @@ async def choose_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return PLAYING_GAME
 
 
-def ask_question(question):
+def ask_question(answers, text):
     keyboard = []
-    for i in range(len(question.answers)):
+    for i in range(len(answers)):
         if i % 4 == 0:
             keyboard.append([])
         keyboard[-1].append(InlineKeyboardButton(beautiful_buttons[i], callback_data=i))
 
     reply_markup = InlineKeyboardMarkup(keyboard)
 
-    text = question.text + '\n'
-    for i, ans in enumerate(question.answers):
+    text = text + '\n'
+    for i, ans in enumerate(answers):
         text += f'{i + 1}) {ans.text}\n'
     return text, reply_markup
 
 
 async def playing_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    db_sess = db_session.create_session()
 
-    question = context.user_data['curr_game'].questions[context.user_data['curr_question']]
-    last_text = ask_question(question)[0]
+    game_id = context.user_data['curr_game_id']
+
+    game = db_sess.query(Game).get(game_id)
+
+    question = game.questions[context.user_data['curr_question']]
+    last_text = ask_question(question.answers, question.text)[0]
     last_text += f'\n|Вы выбрали {int(query.data) + 1}|'
     await query.edit_message_text(text=last_text)
 
@@ -246,22 +254,24 @@ async def playing_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data['curr_question'] += 1
 
     user = update.effective_user
-    db_sess = db_session.create_session()
     player = db_sess.query(User).filter(User.name == user.name).first()
     player.answered_questions += 1
 
-    logger.info(f"{context.user_data['curr_question']}, {len(context.user_data['curr_game'].questions)}")
     db_sess.commit()
 
-    if context.user_data['curr_question'] == len(context.user_data['curr_game'].questions):
+    game_id = context.user_data['curr_game_id']
+
+    game = db_sess.query(Game).get(game_id)
+
+    if context.user_data['curr_question'] == len(game.questions):
         res_id, name, description, image_url, count_users = get_result(context.user_data['results_count'])
         player.total_games += 1
         played_game = player.unique_games.split(',')
-        if str(context.user_data['curr_game'].id) not in played_game:
-            player.unique_games += str(context.user_data['curr_game'].id) + ','
+        if str(game.id) not in played_game:
+            player.unique_games += str(game.id) + ','
         unique_results = player.unique_results.split(',')
         if str(res_id) not in unique_results:
-            player.unique_results += str(context.user_data['curr_game'].id) + ','
+            player.unique_results += str(res_id) + ','
         db_sess.commit()
         chat_id = context.user_data['last_update'].message.chat_id
         await context.bot.send_photo(chat_id=chat_id, photo=open(image_url, 'rb'))
@@ -278,9 +288,9 @@ async def playing_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         return MAIN_MENU
 
-    next_question = context.user_data['curr_game'].questions[context.user_data['curr_question']]
+    next_question = game.questions[context.user_data['curr_question']]
 
-    text, reply_markup = ask_question(next_question)
+    text, reply_markup = ask_question(next_question.answers, next_question.text)
     await context.user_data['last_update'].message.reply_text(
         text,
         reply_markup=reply_markup,
