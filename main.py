@@ -1,4 +1,5 @@
 import logging
+import random
 from random import choice
 
 import requests
@@ -30,9 +31,90 @@ logger = logging.getLogger(__name__)
 MAIN_MENU = 'main_menu'
 CHOOSE_GAME = 'choose_game'
 PLAYING_GAME = 'playing_game'
+FOR_GAMES = 'for_games'
+PLAYING_HANGMAN = 'playing_hangman'
+
 beautiful_buttons = [f'{i}{chr(int("20E3", 16))}' for i in range(1, 11)]
-main_keyboard = [['Выбрать игру'], ['Статистика', '/music']]
+main_keyboard = [
+    ['Выбрать игру', 'для игр'],
+    ['Статистика', '/music'],
+]
 songs = ['DNCE Move', 'Black Magic', 'Cake By The Ocean', 'uptown funk', 'U Can t Touch This']
+
+HANGMAN = (
+    """
+     ------
+     |    |
+     |
+     |
+     |
+     |
+     |
+    ----------
+    """,
+    """
+     ------
+     |    |
+     |    O
+     |
+     |
+     |
+     |
+    ----------
+    """,
+    """
+     ------
+     |    |
+     |    O
+     |    |
+     | 
+     |   
+     |    
+    ----------
+    """,
+    """
+     ------
+     |    |
+     |    O
+     |   /|
+     |   
+     |   
+     |   
+    ----------
+    """,
+    """
+     ------
+     |    |
+     |    O
+     |   /|\\
+     |   
+     |   
+     |     
+    ----------
+    """,
+    """
+     ------
+     |    |
+     |    O
+     |   /|\\
+     |   /
+     |   
+     |    
+    ----------
+    """,
+    """
+     ------
+     |    |
+     |    O
+     |   /|\\
+     |   / \\
+     |   
+     |   
+    ----------
+    """
+)
+
+WORDS = ("питон", "игра", "программирование")  # Слова для угадывания
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -52,10 +134,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 Для выбора варианта ответа в момент ответа на вопрос нажмите на кнопку в чате с нужным номером.
 
 Эти команды работают в любое время:
+/help - помощь
 /music - случайная песня
 /stop - выход'''
 
-    markup = ReplyKeyboardMarkup(main_keyboard, one_time_keyboard=False)
+    markup = ReplyKeyboardMarkup(main_keyboard, one_time_keyboard=False, resize_keyboard=True)
     await update.message.reply_text(
         text,
         reply_markup=markup,
@@ -66,7 +149,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def exit_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_keyboard = [['/start']]
-    markup = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True)
+    markup = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True)
     await update.message.reply_text(
         "Заходите поиграть снова! Ваши результаты сохранены.",
         reply_markup=markup,
@@ -133,7 +216,7 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_keyboard[-1].append(str(i + 1))
             text += f'{i + 1}) {game.name}\n'
         text += '(Введите номер игры или выберете номер на клавиатуре бота)'
-        markup = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True)
+        markup = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True)
 
         context.user_data['games_to_choose_ids'] = [g.id for g in games]
 
@@ -148,7 +231,7 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
             player = is_player[0]
         else:
             reply_keyboard = [['/start']]
-            markup = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True)
+            markup = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True, resize_keyboard=True)
             await update.message.reply_text(
                 "Почему-то вас нету в списке игроков. Перезапустите бота, пожалуйста.",
                 reply_markup=markup
@@ -165,8 +248,29 @@ async def main_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(text)
         return MAIN_MENU
 
+    elif command == 'для игр':
+        text = f'''Вы находитесь в разделе "Для игр"
+Здесь вы можете воспользоваться функцией броска кубика, монетки или поставить таймер.
+Команды:
+/one_dice - кинуть один шестигранный кубик
+/two_dices - кинуть 2 шестигранных кубика одновременно
+/twenty_sides_dice - кинуть 20-гранный кубик
+/throw_coin - бросить монетку
+/timer_30s - поставить таймер на 30 секунд
+/timer_1m - поставить таймер на 1 минуту
+/timer_5m - поставить таймер на 5 минут
+/timer_10m - поставить таймер на 10 минут
+/back
+'''
+
+        await update.message.reply_text(
+            text,
+            reply_markup=ReplyKeyboardRemove(),
+        )
+        return FOR_GAMES
+
     else:
-        markup = ReplyKeyboardMarkup(main_keyboard, one_time_keyboard=False)
+        markup = ReplyKeyboardMarkup(main_keyboard, one_time_keyboard=False, resize_keyboard=True)
 
         await update.message.reply_text(
             f"Вы в главом меню. Выберите команду на клавиатуре бота",
@@ -200,7 +304,7 @@ async def choose_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         reply_keyboard = [['/music']]
-        markup = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=False)
+        markup = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=False, resize_keyboard=True)
         await update.message.reply_text(
             game.description,
             reply_markup=markup,
@@ -215,6 +319,229 @@ async def choose_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
         return PLAYING_GAME
+
+
+def remove_job_if_exists(name, context: ContextTypes.DEFAULT_TYPE):
+    """Удаляем задачу по имени.
+    Возвращаем True если задача была успешно удалена."""
+    current_jobs = context.job_queue.get_jobs_by_name(name)
+    if not current_jobs:
+        return False
+    for job in current_jobs:
+        job.schedule_removal()
+    return True
+
+
+async def task(context: ContextTypes.DEFAULT_TYPE):
+    text = f'Время истекло'
+    await context.bot.send_message(context.job.chat_id, text=text)
+
+
+async def unset(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.message.chat_id
+    job_removed = remove_job_if_exists(str(chat_id), context)
+    text = 'Таймер отменен!' if job_removed else 'У вас нет активных таймеров'
+    await update.message.reply_text(text)
+
+
+def get_dice_emoji(n):
+    dice_emojis = '⚀⚁⚂⚃⚄⚅'
+    emoji = dice_emojis[n - 1]
+    return emoji
+
+
+async def one_dice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    n = random.randint(1, 6)
+    emoji = get_dice_emoji(n)
+    text = f'Вам выпало {n} {emoji}'
+    await update.effective_message.reply_text(text)
+
+
+async def two_dices(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    n1 = random.randint(1, 6)
+    emoji1 = get_dice_emoji(n1)
+    n2 = random.randint(1, 6)
+    emoji2 = get_dice_emoji(n2)
+    text = f'Вам выпали {n1} {emoji1}, {n2} {emoji2}'
+    await update.effective_message.reply_text(text)
+
+
+async def twenty_sides_dice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    n = random.randint(1, 6)
+    text = f'Вам выпало {n}'
+    await update.effective_message.reply_text(text)
+
+
+async def throw_coin(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    n = random.randint(1, 2)
+    if n == 1:
+        side_name = 'орёл'
+    else:
+        side_name = 'решка'
+
+    text = f'Результат броска: {side_name}'
+    await update.effective_message.reply_text(text)
+
+
+async def timer_30s(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_message.chat_id
+    job_removed = remove_job_if_exists(str(chat_id), context)
+    context.user_data["timer_text"] = 'тридцать секунд'
+    context.job_queue.run_once(task, 30, chat_id=chat_id, name=str(chat_id), data=30)
+    text = f'Засек 30 секунд!'
+
+    if job_removed:
+        text += ' Старый таймер удалён.'
+    await update.effective_message.reply_text(text)
+
+
+
+async def timer_1m(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_message.chat_id
+    job_removed = remove_job_if_exists(str(chat_id), context)
+    context.user_data["timer_text"] = 'одна минута'
+    context.job_queue.run_once(task, 60, chat_id=chat_id, name=str(chat_id), data=60)
+    text = f'Засек минуту!'
+
+    if job_removed:
+        text += ' Старый таймер удалён.'
+    await update.effective_message.reply_text(text)
+
+
+async def timer_5m(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_message.chat_id
+    job_removed = remove_job_if_exists(str(chat_id), context)
+    context.user_data["timer_text"] = 'пять минут'
+    context.job_queue.run_once(task, 60 * 5, chat_id=chat_id, name=str(chat_id), data=60 * 5)
+    text = f'Засек 5 минут!'
+
+    if job_removed:
+        text += ' Старый таймер удалён.'
+    await update.effective_message.reply_text(text)
+
+
+async def timer_10m(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_message.chat_id
+    context.user_data["timer_text"] = 'десять минут'
+    job_removed = remove_job_if_exists(str(chat_id), context)
+    context.job_queue.run_once(task, 60 * 10, chat_id=chat_id, name=str(chat_id), data=60*10)
+    text = f'Засек 10 минут!'
+
+    if job_removed:
+        text += ' Старый таймер удалён.'
+    await update.effective_message.reply_text(text)
+
+
+
+
+async def timer_back(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    reply_keyboard = main_keyboard
+    markup = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=False)
+    text = 'Вы в главном меню.'
+    await update.message.reply_html(
+        text,
+        reply_markup=markup
+    )
+
+    return MAIN_MENU
+
+
+async def start_hangman(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    context.user_data["max_wrong"] = len(HANGMAN) - 1
+    context.user_data["word"] = choice(WORDS)  # Слово, которое нужно угадать
+    context.user_data["so_far"] = "_" * len(context.user_data["word"])  # Одна черточка для каждой буквы в слове, которое нужно угадать
+    context.user_data["wrong"] = 0  # Количество неверных предположений, сделанных игроком
+    context.user_data["used"] = []  # Буквы уже угаданы
+
+    await update.message.reply_html(
+        HANGMAN[0]
+    )
+
+    await update.message.reply_html(
+        "Введите свое предположение:"
+    )
+
+    return PLAYING_HANGMAN
+
+
+async def play_hangman(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    max_wrong = context.user_data["max_wrong"]
+    word = context.user_data["word"]
+    so_far = context.user_data["so_far"]
+    wrong = context.user_data["wrong"]
+    used = context.user_data["used"]
+    if wrong < max_wrong and so_far != word:
+
+        guess = update.message.text
+
+        while guess in used:
+            await update.message.reply_html(
+                f"Вы уже вводили букву {guess}"
+            )
+            await update.message.reply_html(
+                "Введите свое предположение:"
+            )
+            return
+
+        used.append(guess)  # В список использованных букв добавляется введённая буква
+
+        if guess in word:  # Если введённая буква есть в загаданном слове, то выводим соответствующее сообщение
+            await update.message.reply_html(
+                f"Да! {guess} есть в слове!"
+            )
+            new = ""
+            for i in range(len(word)):  # В цикле добавляем найденную букву в нужное место
+                if guess == word[i]:
+                    new += guess
+                else:
+                    new += so_far[i]
+            so_far = new
+
+        else:
+            await update.message.reply_html(
+                f'Извините, буквы "{guess}" нет в слове.'
+            )
+
+            wrong += 1
+
+        context.user_data["max_wrong"] = max_wrong
+        context.user_data["word"] = word
+        context.user_data["so_far"] = so_far
+        context.user_data["wrong"] = wrong
+        context.user_data["used"] = used
+
+        await update.message.reply_html(
+            HANGMAN[wrong]
+        )
+        await update.message.reply_html(
+            f"Вы использовали следующие буквы:\n{used}"
+        )
+        await update.message.reply_html(
+            f"На данный момент слово выглядит так:\n{so_far}"
+        )
+
+        await update.message.reply_html(
+            "Введите свое предположение:"
+        )
+
+    else:
+        if wrong == max_wrong:  # Если игрок превысил кол-во ошибок, то его повесили
+            await update.message.reply_html(
+                HANGMAN[wrong]
+            )
+            await update.message.reply_html(
+                "Тебя повесили!"
+            )
+        else:
+            await update.message.reply_html(
+                "Вы угадали слово!"
+            )
+
+        await update.message.reply_html(
+            f'Загаданное слово было "{word}"'
+        )
+
+        return MAIN_MENU
 
 
 def ask_question(answers, text):
@@ -275,7 +602,7 @@ async def playing_game(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db_sess.commit()
         chat_id = context.user_data['last_update'].message.chat_id
         await context.bot.send_photo(chat_id=chat_id, photo=open(image_url, 'rb'))
-        markup = ReplyKeyboardMarkup(main_keyboard, one_time_keyboard=False)
+        markup = ReplyKeyboardMarkup(main_keyboard, one_time_keyboard=False, resize_keyboard=True)
         await context.user_data['last_update'].message.reply_text(
             f'''Вы {name}!
 {description}
@@ -303,9 +630,22 @@ def main():
     db_session.global_init("db/database.sqlite")
 
     states = {
-        MAIN_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, main_menu)],
+        MAIN_MENU: [MessageHandler(filters.TEXT & ~filters.COMMAND, main_menu),
+                    CommandHandler('start_hangman', start_hangman)],
         CHOOSE_GAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, choose_game)],
         PLAYING_GAME: [CallbackQueryHandler(playing_game)],
+        FOR_GAMES: [
+            CommandHandler('one_dice', one_dice),
+            CommandHandler('two_dices', two_dices),
+            CommandHandler('twenty_sides_dice', twenty_sides_dice),
+            CommandHandler('throw_coin', throw_coin),
+            CommandHandler('timer_30s', timer_30s),
+            CommandHandler('timer_1m', timer_1m),
+            CommandHandler('timer_5m', timer_5m),
+            CommandHandler('timer_10m', timer_10m),
+            CommandHandler('back',timer_back),
+        ],
+        PLAYING_HANGMAN: [MessageHandler(filters.TEXT & ~filters.COMMAND, play_hangman)]
     }
 
     # Добавляю функции, которыми можно воспользоваться в любой момент
